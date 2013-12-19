@@ -1,0 +1,46 @@
+# bark
+
+## It's like a floating zoo
+
+`bark` is a library that contains various bits of
+[Apache ZooKeeper](http://zookeeper.apache.org/) utility code that does not
+have any better home and rises up to sail alone.  Most classes use
+[zkclient](https://github.com/sgroschupf/zkclient) instead of using
+the zookeeper library directly.
+
+If you are looking for a more general purpose library you might want
+to use [zkclient](https://github.com/sgroschupf/zkclient) itself or
+[Apache Curator](http://curator.apache.org/).
+
+## Building
+
+`mvn test`
+
+## Use
+
+```xml
+<dependency>
+  <groupId>com.addthis</groupId>
+  <artifactId>bundle</artifactId>
+  <version>latest-and-greatest</version>
+</dependency>
+```
+
+You can either install locally, or releases will eventually make their
+way to maven central.
+
+## Administrative
+
+### Versioning
+
+It's x.y.z where:
+
+ * x: something major happened
+ * y: next release
+ * z: bug fix only
+
+### License
+
+bundle is released under the Apache License Version 2.0.  See
+[Apache](http://www.apache.org/licenses/LICENSE-2.0) or the LICENSE
+for details.
