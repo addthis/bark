@@ -151,9 +151,9 @@
   </reporting>
 
   <scm>
-    <connection>scm:git:http://git.clearspring.local/bark.git</connection>
-    <developerConnection>scm:git:http://git.clearspring.local/bark.git</developerConnection>
-    <url>scm:git:http://git.clearspring.local/bark.git</url>
+    <connection>scm:git:git@github.com:addthis/bark.git</connection>
+    <developerConnection>scm:git:git@github.com:addthis/bark.git</developerConnection>
+    <url>https://github.com/addthis/bark</url>
     <tag>HEAD</tag>
   </scm>
 
