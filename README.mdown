@@ -21,7 +21,7 @@ to use [zkclient](https://github.com/sgroschupf/zkclient) itself or
 ```xml
 <dependency>
   <groupId>com.addthis</groupId>
-  <artifactId>bundle</artifactId>
+  <artifactId>bark</artifactId>
   <version>latest-and-greatest</version>
 </dependency>
 ```
