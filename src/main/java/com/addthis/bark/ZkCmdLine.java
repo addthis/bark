@@ -22,7 +22,6 @@ import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.I0Itec.zkclient.ZkClient;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -31,6 +30,10 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.cli.PosixParser;
 
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.CuratorFrameworkFactory;
+import org.apache.curator.retry.RetryOneTime;
+import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,13 +45,13 @@ public class ZkCmdLine {
     private static final int zkConnectionTimeout = Integer.parseInt(System.getProperty("zk.connectionTimeout", "60000"));
 
     private CommandLine cmdline;
-    private ZkClient zkClient;
+    private CuratorFramework zkClient;
 
 
     public ZkCmdLine(CommandLine cmdline) {
         this.cmdline = cmdline;
-        this.zkClient = new ZkClient(cmdline.getOptionValue("zk") + "/" + cmdline.getOptionValue("chroot"),
-                zkSessionTimeout, zkConnectionTimeout, new StringSerializer());
+        this.zkClient = CuratorFrameworkFactory.newClient(cmdline.getOptionValue("zk") + "/" + cmdline.getOptionValue("chroot"),
+                zkSessionTimeout, zkConnectionTimeout, new RetryOneTime(5000));
     }
 
     public static void main(String[] args) throws Exception {
@@ -116,46 +119,46 @@ public class ZkCmdLine {
         // todo: import from files
     }
 
-    public void cmdGet() {
-        String data = ZkHelpers.readData(zkClient, cmdline.getOptionValue("znode"));
+    public void cmdGet() throws Exception {
+        String data = StringSerializer.deserialize(zkClient.getData().forPath(cmdline.getOptionValue("znode")));
         System.out.println(data);
     }
 
-    public void cmdPut() {
+    public void cmdPut() throws Exception {
         String znode = cmdline.getOptionValue("znode");
         String data = null;
         if (cmdline.hasOption("put-data")) {
             data = cmdline.getOptionValue("put-data");
         }
-        if (data == null) {
-            ZkHelpers.makeSurePersistentPathExists(zkClient, znode);
-        } else {
-            ZkHelpers.updatePersistentPath(zkClient, znode, data);
+        try {
+            zkClient.create().forPath(znode);
+        } catch (KeeperException.NodeExistsException e) {
+            zkClient.setData().forPath(znode, StringSerializer.serialize(data));
         }
     }
 
 
-    public void cmdDelete() {
-        zkClient.delete(cmdline.getOptionValue("znode"));
+    public void cmdDelete() throws Exception {
+        zkClient.delete().forPath(cmdline.getOptionValue("znode"));
     }
 
 
-    public void cmdKids() {
-        List<String> kids = zkClient.getChildren(cmdline.getOptionValue("znode"));
+    public void cmdKids() throws Exception {
+        List<String> kids = zkClient.getChildren().forPath(cmdline.getOptionValue("znode"));
         System.out.println(kids);
     }
 
-    public void cmdGrandKids() {
+    public void cmdGrandKids() throws Exception {
         System.out.println(getFamily(cmdline.getOptionValue("znode")));
     }
 
 
-    public void cmdCleanJsonString() {
+    public void cmdCleanJsonString() throws Exception {
         cleanNodeJsonString(cmdline.getOptionValue("znode"));
     }
 
 
-    public void cmdCleanJsonStringRecursive() {
+    public void cmdCleanJsonStringRecursive() throws Exception {
         List<Object> graph = getFamily(cmdline.getOptionValue("znode"));
         cleanNodeJsonStringList(graph);
     }
@@ -170,7 +173,7 @@ public class ZkCmdLine {
     public void cmdExportChildren() throws Exception {
         String path = cmdline.getOptionValue("znode");
         String dir = cmdline.getOptionValue("dir");
-        List<String> kids = zkClient.getChildren(path);
+        List<String> kids = zkClient.getChildren().forPath(path);
         System.out.println(kids);
         for (String kid : kids) {
             exportPath(path + "/" + kid, dir);
@@ -185,10 +188,10 @@ public class ZkCmdLine {
             toZnode = cmdline.getOptionValue("to-znode");
         }
 
-        ZkClient toZkClient = new ZkClient((cmdline.hasOption("to-zk") ? cmdline.getOptionValue("to-zk") : cmdline.getOptionValue("zk")) +
+        CuratorFramework toZkClient = CuratorFrameworkFactory.newClient((cmdline.hasOption("to-zk") ? cmdline.getOptionValue("to-zk") : cmdline.getOptionValue("zk")) +
                                            "/" +
                                            (cmdline.hasOption("to-chroot") ? cmdline.getOptionValue("to-chroot") : cmdline.getOptionValue("chroot")),
-                zkSessionTimeout, zkConnectionTimeout, new StringSerializer());
+                zkSessionTimeout, zkConnectionTimeout, new RetryOneTime(5000));
 
         copyZnode(fromZnode, toZnode, this.zkClient, toZkClient);
     }
@@ -201,10 +204,10 @@ public class ZkCmdLine {
         //     toZnode = cmdline.getOptionValue("to-znode");
         // }
 
-        ZkClient toZkClient = new ZkClient((cmdline.hasOption("to-zk") ? cmdline.getOptionValue("to-zk") : cmdline.getOptionValue("zk")) +
-                                           "/" +
-                                           (cmdline.hasOption("to-chroot") ? cmdline.getOptionValue("to-chroot") : cmdline.getOptionValue("chroot")),
-                zkSessionTimeout, zkConnectionTimeout, new StringSerializer());
+        CuratorFramework toZkClient = CuratorFrameworkFactory.newClient((cmdline.hasOption("to-zk") ? cmdline.getOptionValue("to-zk") : cmdline.getOptionValue("zk")) +
+                "/" +
+                (cmdline.hasOption("to-chroot") ? cmdline.getOptionValue("to-chroot") : cmdline.getOptionValue("chroot")),
+                zkSessionTimeout, zkConnectionTimeout, new RetryOneTime(5000));
 
         List<String> znodes = flatten(getFamily(fromZnode));
         for (String znode : znodes) {
@@ -213,19 +216,19 @@ public class ZkCmdLine {
     }
 
 
-    private void copyZnode(String fromZnode, String toZnode, ZkClient fromZkClient, ZkClient toZkClient) {
-        String fromData = ZkHelpers.readData(zkClient, fromZnode);
+    private void copyZnode(String fromZnode, String toZnode, CuratorFramework fromZkClient, CuratorFramework toZkClient) throws Exception {
+        String fromData = StringSerializer.deserialize(zkClient.getData().forPath(fromZnode));
         System.out.println("tonode: " + toZnode + " from data " + fromData);
-        if (fromData == null) {
-            ZkHelpers.makeSurePersistentPathExists(toZkClient, toZnode);
-        } else {
-            ZkHelpers.updatePersistentPath(toZkClient, toZnode, fromData);
+        try {
+            toZkClient.create().forPath(toZnode, StringSerializer.serialize(fromData));
+        } catch (KeeperException.NodeExistsException e) {
+            toZkClient.setData().forPath(toZnode, StringSerializer.serialize(fromData));
         }
     }
 
 
     private void exportPath(String path, String dir) throws Exception {
-        String data = ZkHelpers.readData(zkClient, path);
+        String data = StringSerializer.deserialize(zkClient.getData().forPath(path));
         if (data == null) {
             System.out.println("no data to export for " + path);
             return;
@@ -236,7 +239,7 @@ public class ZkCmdLine {
     }
 
 
-    private void cleanNodeJsonStringList(List<Object> graph) {
+    private void cleanNodeJsonStringList(List<Object> graph) throws Exception {
         for (Object o : graph) {
             if (o instanceof String) {
                 cleanNodeJsonString((String) o);
@@ -246,8 +249,8 @@ public class ZkCmdLine {
         }
     }
 
-    private void cleanNodeJsonString(String path) {
-        String data = ZkHelpers.readData(zkClient, path);
+    private void cleanNodeJsonString(String path) throws Exception {
+        String data = StringSerializer.deserialize(zkClient.getData().forPath(path));
         if (data == null) {
             System.out.println("no data on path : " + path);
         } else {
@@ -259,18 +262,18 @@ public class ZkCmdLine {
             System.out.println("Old Data on path  " + path + " : " + data);
             String newData = data.substring(idx);
             System.out.println("New Data on path  " + path + " : " + newData);
-            zkClient.writeData(path, newData);
+            zkClient.setData().forPath(path, StringSerializer.serialize(newData));
         }
     }
 
 
-    private List<Object> getFamily(String path) {
-        List<String> kids = zkClient.getChildren(path);
+    private List<Object> getFamily(String path) throws Exception {
+        List<String> kids = zkClient.getChildren().forPath(path);
         List<Object> graph = new ArrayList<Object>();
         graph.add(path);
         for (String kid : kids) {
             String kidpath = path + "/" + kid;
-            int numKids = zkClient.countChildren(kidpath);
+            int numKids = zkClient.getChildren().forPath(kidpath).size();
             if (numKids == 0) {
                 graph.add(kidpath);
             } else {

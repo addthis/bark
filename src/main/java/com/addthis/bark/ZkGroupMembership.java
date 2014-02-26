@@ -13,14 +13,16 @@
  */
 package com.addthis.bark;
 
-import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
-
-import org.I0Itec.zkclient.IZkChildListener;
-import org.I0Itec.zkclient.ZkClient;
-
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.recipes.cache.PathChildrenCache;
+import org.apache.curator.framework.recipes.cache.PathChildrenCacheListener;
+import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ZkGroupMembership {
 
@@ -29,14 +31,14 @@ public class ZkGroupMembership {
     private static final int zkConnectionTimeout = Integer.parseInt(System.getProperty("zk.connectionTimeout", "60000"));
     private static final int RETRYS = 5;
 
-    private ZkClient zkClient;
+    private CuratorFramework zkClient;
     private final boolean ephemeral;
 
-    public ZkGroupMembership(ZkClient zkClient) {
+    public ZkGroupMembership(CuratorFramework zkClient) {
         this(zkClient, true);
     }
 
-    public ZkGroupMembership(ZkClient zkClient, boolean ephemeral) {
+    public ZkGroupMembership(CuratorFramework zkClient, boolean ephemeral) {
         this.zkClient = zkClient;
         this.ephemeral = ephemeral;
     }
@@ -58,39 +60,58 @@ public class ZkGroupMembership {
         int remaining = zkConnectionTimeout;
 
         // try at most RETRYS times to replace existing node
-        while (zkClient.exists(path) && (shutdown == null || !shutdown.get())) {
-            if (remaining <= 0) {
-                throw new RuntimeException("cannot overwrite existing path: " + path);
+        try {
+            while (zkClient.checkExists().forPath(path) != null && (shutdown == null || !shutdown.get())) {
+                if (remaining <= 0) {
+                    throw new RuntimeException("cannot overwrite existing path: " + path);
+                }
+                log.info("[group.add] path already exists, retrying: {}", path);
+                remaining -= zkConnectionTimeout / RETRYS;
+                try {
+                    Thread.sleep(zkConnectionTimeout / RETRYS);
+                } catch (Exception ex) {
+                }
             }
-            log.info("[group.add] path already exists, retrying: {}", path);
-            remaining -= zkConnectionTimeout / RETRYS;
-            try {
-                Thread.sleep(zkConnectionTimeout / RETRYS);
-            } catch (Exception ex) {
-            }
+        } catch (Exception e) {
+            throw new RuntimeException("[group.add] unexpected exception adding to group: " + path, e);
         }
 
         if (shutdown != null && shutdown.get()) {
             return;
         }
-
-        if (ephemeral) {
-            zkClient.createEphemeral(path, data);
-        } else {
-            zkClient.createPersistent(path, data);
+        try {
+            try {
+                if (ephemeral) {
+                    zkClient.create().withMode(CreateMode.EPHEMERAL).forPath(path, StringSerializer.serialize(data));
+                } else {
+                    zkClient.create().forPath(path, StringSerializer.serialize(data));
+                }
+            } catch (KeeperException.NodeExistsException e) {
+                zkClient.setData().forPath(path, StringSerializer.serialize(data));
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("[group.add] unable to create node", e);
         }
+
     }
 
 
     public void removeFromGroup(String parentPath, String member) {
-        zkClient.deleteRecursive(parentPath + "/" + member);
+        try {
+            zkClient.delete().deletingChildrenIfNeeded().forPath(parentPath + "/" + member);
+        } catch (Exception e) {
+            throw new RuntimeException("unable to remove: " + member + " from group", e);
+        }
     }
 
+    public List<String> listenToGroup(String parentPath, PathChildrenCacheListener listener) throws Exception {
+        return listenToGroup(parentPath, listener, false);
+    }
 
-    // Note that the caller is responsible for what to do about
-    // listener's after a reconnect.  ZkGroupMembership can not solve
-    // that for you.
-    public List<String> listenToGroup(String parentPath, IZkChildListener listener) {
-        return zkClient.subscribeChildChanges(parentPath, listener);
+    public List<String> listenToGroup(String parentPath, PathChildrenCacheListener listener, boolean cacheData) throws Exception {
+        PathChildrenCache cache = new PathChildrenCache(zkClient, parentPath, cacheData);
+        cache.getListenable().addListener(listener);
+        cache.start();
+        return zkClient.getChildren().forPath(parentPath);
     }
 }

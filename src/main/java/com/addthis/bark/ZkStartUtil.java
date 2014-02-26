@@ -13,30 +13,46 @@
  */
 package com.addthis.bark;
 
-import org.I0Itec.zkclient.ZkClient;
-
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.CuratorFrameworkFactory;
+import org.apache.curator.retry.RetryOneTime;
+import org.apache.curator.test.InstanceSpec;
+import org.apache.curator.test.QuorumConfigBuilder;
+import org.apache.curator.test.TestingServer;
+import org.apache.curator.test.TestingZooKeeperServer;
 import org.junit.After;
 import org.junit.Before;
+
+import java.io.IOException;
 
 @SuppressWarnings("unused")
 public class ZkStartUtil {
 
-    protected EmbeddedZookeeper myKeeper;
-    protected ZkClient myZkClient;
+    protected TestingServer myKeeper;
+    protected CuratorFramework zkClient;
 
     @Before
     public void startKeepers() throws Exception {
-        myKeeper = new EmbeddedZookeeper(17023);
-        String keeperPort = String.valueOf(myKeeper.getPort());
+        InstanceSpec spec = new InstanceSpec(null, -1, -1, -1, true, -1, 2000, 10);
+        System.setProperty("zookeeper.serverCnxnFactory", "org.apache.zookeeper.server.NettyServerCnxnFactory");
+        myKeeper = new TestingServer(spec);
+        String keeperPort = String.valueOf(spec.getPort());
         System.setProperty("zk.servers", "localhost:" + keeperPort);
-        myZkClient = new ZkClient("localhost:" + keeperPort, 10000, 60000, new StringSerializer());
+        zkClient = CuratorFrameworkFactory.builder()
+                .sessionTimeoutMs(60000)
+                .connectionTimeoutMs(10000)
+                .connectString("localhost:" + keeperPort)
+                .retryPolicy(new RetryOneTime(1000))
+                .defaultData(null)
+                .build();
+        zkClient.start();
         onAfterZKStart();
     }
 
     @After
-    public void stopKeepers() {
-        myZkClient.close();
-        myKeeper.shutdown();
+    public void stopKeepers() throws IOException {
+        zkClient.close();
+        myKeeper.stop();
         onAfterZKStop();
     }
 
