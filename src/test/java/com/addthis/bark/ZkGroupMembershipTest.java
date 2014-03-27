@@ -16,13 +16,21 @@ package com.addthis.bark;
 
 import com.google.common.collect.ImmutableSet;
 
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
-import org.I0Itec.zkclient.IZkChildListener;
-import org.I0Itec.zkclient.ZkClient;
-
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.CuratorFrameworkFactory;
+import org.apache.curator.framework.recipes.cache.PathChildrenCacheEvent;
+import org.apache.curator.framework.recipes.cache.PathChildrenCacheListener;
+import org.apache.curator.retry.RetryOneTime;
+import org.apache.curator.test.InstanceSpec;
+import org.apache.curator.test.TestingServer;
 import org.junit.After;
+
 import static org.junit.Assert.assertEquals;
+
 import org.junit.Before;
 import org.junit.Test;
 
@@ -34,42 +42,60 @@ public class ZkGroupMembershipTest {
 
     private static final Logger logger = LoggerFactory.getLogger(ZkGroupMembershipTest.class);
 
-    private EmbeddedZookeeper myKeeper;
-    private ZkClient myZkClient;
+    private TestingServer myKeeper;
+    private CuratorFramework myZkClient;
 
     @Before
     public void startKeepers() throws Exception {
-        System.setProperty("zk.servers", "localhost:17022");
-
-        // todo: random port
-        myKeeper = new EmbeddedZookeeper(17022);
-        // todo: use standard
-        myZkClient = new ZkClient("localhost:" + String.valueOf(myKeeper.getPort()), 10000, 60000, new StringSerializer());
+        InstanceSpec spec = new InstanceSpec(null, -1, -1, -1, true, -1, 2000, 10);
+        System.setProperty("zk.servers", "localhost:" + spec.getPort());
+        System.setProperty("zookeeper.serverCnxnFactory", "org.apache.zookeeper.server.NettyServerCnxnFactory");
+        myKeeper = new TestingServer(spec);
+        myZkClient = CuratorFrameworkFactory.newClient("localhost:" + spec.getPort(), new RetryOneTime(1000));
+        myZkClient.start();
     }
 
     @After
-    public void stopKeepers() {
-        myZkClient.close();
-        myKeeper.shutdown();
+    public void stopKeepers() throws IOException {
     }
 
 
-    public class NoOpListner implements IZkChildListener {
-
-        public void handleChildChange(String parentPath, List<String> currentChilds) throws Exception {
-            logger.debug("Listener parent path: {} currentChilds {}", new Object[]{parentPath, currentChilds});
+    public class NoOpListner implements PathChildrenCacheListener {
+        @Override
+        public void childEvent(CuratorFramework client, PathChildrenCacheEvent event) throws Exception {
+            logger.debug("Listener parent path: {} currentData {}",
+                    new Object[]{event.getData().getPath(), StringSerializer.deserialize(event.getData().getData())});
         }
     }
 
     private List<String> testGroupMembers;
 
-    public class SingleVarListener implements IZkChildListener {
+    public class SingleVarListener implements PathChildrenCacheListener {
 
-        public void handleChildChange(String parentPath, List<String> currentChilds) throws Exception {
-            logger.debug("Listener parent path: {} currentChilds {}", new Object[]{parentPath, currentChilds});
-            synchronized (this) {
-                testGroupMembers = currentChilds;
+        @Override
+        public void childEvent(CuratorFramework client, PathChildrenCacheEvent event) throws Exception {
+            logger.debug("Listener parent path: {} currentData {}",
+                    new Object[]{event.getData().getPath(), StringSerializer.deserialize(event.getData().getData())});
+            switch (event.getType()) {
+                case CHILD_ADDED:
+                    synchronized (this) {
+                        if (testGroupMembers == null) {
+                            testGroupMembers = new ArrayList<>();
+                        }
+                        testGroupMembers.add(event.getData().getPath().substring(
+                                event.getData().getPath().lastIndexOf("/")+1));
+                    }
+                    break;
+                case CHILD_REMOVED:
+                    synchronized (this) {
+                        if (testGroupMembers != null) {
+                            testGroupMembers.remove(event.getData().getPath().substring(
+                                    event.getData().getPath().lastIndexOf("/")+1));
+                        }
+                    }
+                    break;
             }
+
         }
     }
 
@@ -78,7 +104,7 @@ public class ZkGroupMembershipTest {
     public void testNoCurrentMembers() throws Exception {
         String testPath = "/foo";
         ZkGroupMembership group = new ZkGroupMembership(myZkClient);
-        ZkHelpers.makeSurePersistentPathExists(myZkClient, testPath);
+        myZkClient.create().creatingParentsIfNeeded().forPath(testPath);
         List<String> currentMembers = group.listenToGroup(testPath, new NoOpListner());
         assertEquals(ImmutableSet.of(), ImmutableSet.copyOf(currentMembers));
     }
@@ -88,9 +114,8 @@ public class ZkGroupMembershipTest {
     public void testSomeCurrent() throws Exception {
         String testPath = "/foo";
         ZkGroupMembership group = new ZkGroupMembership(myZkClient);
-        ZkHelpers.makeSurePersistentPathExists(myZkClient, testPath);
-        ZkHelpers.makeSurePersistentPathExists(myZkClient, testPath + "/a");
-        ZkHelpers.makeSurePersistentPathExists(myZkClient, testPath + "/b");
+        myZkClient.create().creatingParentsIfNeeded().forPath(testPath + "/a");
+        myZkClient.create().creatingParentsIfNeeded().forPath(testPath + "/b");
         List<String> currentMembers = group.listenToGroup(testPath, new NoOpListner());
         assertEquals(ImmutableSet.of("a", "b"), ImmutableSet.copyOf(currentMembers));
     }
@@ -100,12 +125,10 @@ public class ZkGroupMembershipTest {
     public void testGroupUpdates() throws Exception {
         String testPath = "/foo";
         ZkGroupMembership group = new ZkGroupMembership(myZkClient);
-        ZkHelpers.makeSurePersistentPathExists(myZkClient, testPath);
-        ZkHelpers.makeSurePersistentPathExists(myZkClient, testPath + "/a");
-
+        myZkClient.create().creatingParentsIfNeeded().forPath(testPath + "/a");
         List<String> currentMembers = group.listenToGroup(testPath, new SingleVarListener());
         assertEquals(ImmutableSet.of("a"), ImmutableSet.copyOf(currentMembers));
-        ZkHelpers.makeSurePersistentPathExists(myZkClient, testPath + "/b");
+        myZkClient.create().creatingParentsIfNeeded().forPath(testPath + "/b");
         Thread.sleep(250);
         assertEquals(ImmutableSet.of("a", "b"), ImmutableSet.copyOf(testGroupMembers));
     }
@@ -115,12 +138,11 @@ public class ZkGroupMembershipTest {
     public void testGroupRemove() throws Exception {
         String testPath = "/foo";
         ZkGroupMembership group = new ZkGroupMembership(myZkClient);
-        ZkHelpers.makeSurePersistentPathExists(myZkClient, testPath);
-        ZkHelpers.makeSurePersistentPathExists(myZkClient, testPath + "/a");
+        myZkClient.create().creatingParentsIfNeeded().forPath(testPath + "/a");
 
         List<String> currentMembers = group.listenToGroup(testPath, new SingleVarListener());
         assertEquals(ImmutableSet.of("a"), ImmutableSet.copyOf(currentMembers));
-        ZkHelpers.makeSurePersistentPathExists(myZkClient, testPath + "/b");
+        myZkClient.create().creatingParentsIfNeeded().forPath(testPath + "/b");
         Thread.sleep(250);
         assertEquals(ImmutableSet.of("a", "b"), ImmutableSet.copyOf(testGroupMembers));
         group.removeFromGroup(testPath, "a");

@@ -15,12 +15,9 @@ package com.addthis.bark;
 
 import java.io.UnsupportedEncodingException;
 
-import org.I0Itec.zkclient.exception.ZkMarshallingError;
-import org.I0Itec.zkclient.serialize.ZkSerializer;
+public class StringSerializer {
 
-public class StringSerializer implements ZkSerializer {
-
-    public byte[] serialize(Object data) throws ZkMarshallingError {
+    public static byte[] serialize(Object data) {
         try {
             return data.toString().getBytes("UTF-8");
         } catch (UnsupportedEncodingException e) {
@@ -28,7 +25,7 @@ public class StringSerializer implements ZkSerializer {
         }
     }
 
-    public Object deserialize(byte[] bytes) throws ZkMarshallingError {
+    public static String deserialize(byte[] bytes) {
         if (bytes == null) {
             return null;
         } else {
