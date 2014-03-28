@@ -33,17 +33,13 @@ public class ZkStartUtil {
 
     @Before
     public void startKeepers() throws Exception {
-        InstanceSpec spec = new InstanceSpec(null, -1, -1, -1, true, -1, 2000, 10);
         System.setProperty("zookeeper.serverCnxnFactory", "org.apache.zookeeper.server.NettyServerCnxnFactory");
-        myKeeper = new TestingServer(spec);
-        String keeperPort = String.valueOf(spec.getPort());
+        myKeeper = new TestingServer(17023);
+        String keeperPort = String.valueOf(myKeeper.getPort());
         System.setProperty("zk.servers", "localhost:" + keeperPort);
         zkClient = CuratorFrameworkFactory.builder()
-                .sessionTimeoutMs(60000)
-                .connectionTimeoutMs(10000)
-                .connectString("localhost:" + keeperPort)
-                .retryPolicy(new RetryOneTime(1000))
-                .defaultData(null)
+                .connectString(myKeeper.getConnectString())
+                .retryPolicy(new RetryOneTime(1))
                 .build();
         zkClient.start();
         onAfterZKStart();
