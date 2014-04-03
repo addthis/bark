@@ -1,10 +1,13 @@
 package com.addthis.bark;
 
+import javax.annotation.Nonnull;
+
 import com.addthis.basis.util.Parameter;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.curator.retry.ExponentialBackoffRetry;
 
+@SuppressWarnings("unused")
 public class ZkUtil {
     private static final String zkHosts = Parameter.value("zk.servers", "127.0.0.1:2181");
     private static final String zkChroot = Parameter.value("zk.chroot", "");
@@ -32,12 +35,20 @@ public class ZkUtil {
         return makeCustomChrootClient(zkHosts, chroot);
     }
 
+    static String stripTrailingSlash(@Nonnull String input) {
+        if (input.endsWith("/")) {
+            return input.substring(0, input.length() - 1);
+        } else {
+            return input;
+        }
+    }
+
 
     public static CuratorFramework makeCustomChrootClient(String zkHosts, String chroot) {
         CuratorFramework framework = CuratorFrameworkFactory.builder()
                 .sessionTimeoutMs(zkSessionTimeout)
                 .connectionTimeoutMs(zkConnectionTimeout)
-                .connectString(zkHosts + "/" + chroot)
+                .connectString(stripTrailingSlash(zkHosts + "/" + chroot))
                 .retryPolicy(new ExponentialBackoffRetry(baseZkRetryTimeMs, zkRetryMaxAttempts))
                 .defaultData(null)
                 .build();
