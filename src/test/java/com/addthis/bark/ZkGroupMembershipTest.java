@@ -19,6 +19,9 @@ import com.google.common.collect.ImmutableSet;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
@@ -42,7 +45,6 @@ public class ZkGroupMembershipTest {
 
     private static final Logger logger = LoggerFactory.getLogger(ZkGroupMembershipTest.class);
 
-    private TestingServer myKeeper;
     private CuratorFramework myZkClient;
 
     @Before
@@ -50,7 +52,7 @@ public class ZkGroupMembershipTest {
         InstanceSpec spec = new InstanceSpec(null, -1, -1, -1, true, -1, 2000, 10);
         System.setProperty("zk.servers", "localhost:" + spec.getPort());
         System.setProperty("zookeeper.serverCnxnFactory", "org.apache.zookeeper.server.NettyServerCnxnFactory");
-        myKeeper = new TestingServer(spec);
+        TestingServer myKeeper = new TestingServer(spec);
         myZkClient = CuratorFrameworkFactory.newClient("localhost:" + spec.getPort(), new RetryOneTime(1000));
         myZkClient.start();
     }
@@ -68,9 +70,15 @@ public class ZkGroupMembershipTest {
         }
     }
 
-    private List<String> testGroupMembers;
+    private CopyOnWriteArraySet<String> testGroupMembers = new CopyOnWriteArraySet<>();
 
     public class SingleVarListener implements PathChildrenCacheListener {
+
+        private final CyclicBarrier barrier;
+
+        public SingleVarListener(CyclicBarrier barrier) {
+            this.barrier = barrier;
+        }
 
         @Override
         public void childEvent(CuratorFramework client, PathChildrenCacheEvent event) throws Exception {
@@ -79,20 +87,17 @@ public class ZkGroupMembershipTest {
             switch (event.getType()) {
                 case CHILD_ADDED:
                     synchronized (this) {
-                        if (testGroupMembers == null) {
-                            testGroupMembers = new ArrayList<>();
-                        }
                         testGroupMembers.add(event.getData().getPath().substring(
                                 event.getData().getPath().lastIndexOf("/")+1));
                     }
+                    barrier.await(10, TimeUnit.SECONDS);
                     break;
                 case CHILD_REMOVED:
                     synchronized (this) {
-                        if (testGroupMembers != null) {
-                            testGroupMembers.remove(event.getData().getPath().substring(
-                                    event.getData().getPath().lastIndexOf("/")+1));
-                        }
+                        testGroupMembers.remove(event.getData().getPath().substring(
+                                event.getData().getPath().lastIndexOf("/")+1));
                     }
+                    barrier.await(10, TimeUnit.SECONDS);
                     break;
             }
 
@@ -126,10 +131,12 @@ public class ZkGroupMembershipTest {
         String testPath = "/foo";
         ZkGroupMembership group = new ZkGroupMembership(myZkClient);
         myZkClient.create().creatingParentsIfNeeded().forPath(testPath + "/a");
-        List<String> currentMembers = group.listenToGroup(testPath, new SingleVarListener());
+        CyclicBarrier barrier = new CyclicBarrier(2);
+        List<String> currentMembers = group.listenToGroup(testPath, new SingleVarListener(barrier));
         assertEquals(ImmutableSet.of("a"), ImmutableSet.copyOf(currentMembers));
         myZkClient.create().creatingParentsIfNeeded().forPath(testPath + "/b");
-        Thread.sleep(250);
+        barrier.await(10, TimeUnit.SECONDS);
+        barrier.await(10, TimeUnit.SECONDS);
         assertEquals(ImmutableSet.of("a", "b"), ImmutableSet.copyOf(testGroupMembers));
     }
 
@@ -139,14 +146,15 @@ public class ZkGroupMembershipTest {
         String testPath = "/foo";
         ZkGroupMembership group = new ZkGroupMembership(myZkClient);
         myZkClient.create().creatingParentsIfNeeded().forPath(testPath + "/a");
-
-        List<String> currentMembers = group.listenToGroup(testPath, new SingleVarListener());
+        CyclicBarrier barrier = new CyclicBarrier(2);
+        List<String> currentMembers = group.listenToGroup(testPath, new SingleVarListener(barrier));
         assertEquals(ImmutableSet.of("a"), ImmutableSet.copyOf(currentMembers));
         myZkClient.create().creatingParentsIfNeeded().forPath(testPath + "/b");
-        Thread.sleep(250);
+        barrier.await(10, TimeUnit.SECONDS);
+        barrier.await(10, TimeUnit.SECONDS);
         assertEquals(ImmutableSet.of("a", "b"), ImmutableSet.copyOf(testGroupMembers));
         group.removeFromGroup(testPath, "a");
-        Thread.sleep(250);
+        barrier.await(10, TimeUnit.SECONDS);
         assertEquals(ImmutableSet.of("b"), ImmutableSet.copyOf(testGroupMembers));
     }
 }
