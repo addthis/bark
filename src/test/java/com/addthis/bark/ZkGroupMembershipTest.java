@@ -17,7 +17,6 @@ package com.addthis.bark;
 import com.google.common.collect.ImmutableSet;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.CyclicBarrier;
@@ -47,18 +46,21 @@ public class ZkGroupMembershipTest {
 
     private CuratorFramework myZkClient;
 
+    private TestingServer myKeeper;
+
     @Before
     public void startKeepers() throws Exception {
         InstanceSpec spec = new InstanceSpec(null, -1, -1, -1, true, -1, 2000, 10);
         System.setProperty("zk.servers", "localhost:" + spec.getPort());
         System.setProperty("zookeeper.serverCnxnFactory", "org.apache.zookeeper.server.NettyServerCnxnFactory");
-        TestingServer myKeeper = new TestingServer(spec);
+        myKeeper = new TestingServer(spec, true);
         myZkClient = CuratorFrameworkFactory.newClient("localhost:" + spec.getPort(), new RetryOneTime(1000));
         myZkClient.start();
     }
 
     @After
     public void stopKeepers() throws IOException {
+        myKeeper.stop();
     }
 
 
