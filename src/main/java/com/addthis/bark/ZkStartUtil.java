@@ -16,14 +16,12 @@ package com.addthis.bark;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.curator.retry.RetryOneTime;
-import org.apache.curator.test.InstanceSpec;
-import org.apache.curator.test.QuorumConfigBuilder;
 import org.apache.curator.test.TestingServer;
-import org.apache.curator.test.TestingZooKeeperServer;
-import org.junit.After;
-import org.junit.Before;
 
 import java.io.IOException;
+
+import org.junit.After;
+import org.junit.Before;
 
 @SuppressWarnings("unused")
 public class ZkStartUtil {

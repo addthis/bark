@@ -16,7 +16,7 @@
     <parent>
         <artifactId>jar-pom</artifactId>
         <groupId>com.addthis.common.build.maven.pom</groupId>
-        <version>3.1.0</version>
+        <version>3.4.0</version>
     </parent>
 
   <groupId>com.addthis</groupId>
@@ -35,23 +35,6 @@
         <!-- enforcer plugin must be explicitly enabled with -Denforcer.skip=false -->
         <enforcer.skip>true</enforcer.skip>
     </properties>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-enforcer-plugin</artifactId>
-                <version>1.3.1</version>
-                <configuration>
-                    <rules>
-                        <DependencyConvergence />
-                    </rules>
-                    <fail>true</fail>
-                    <skip>${enforcer.skip}</skip>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
 
     <dependencies>
         <dependency>
@@ -150,10 +133,6 @@
                     <groupId>org.slf4j</groupId>
                     <artifactId>slf4j-api</artifactId>
                 </exclusion>
-                <exclusion>
-                    <groupId>com.google.guava</groupId>
-                    <artifactId>guava</artifactId>
-                </exclusion>
             </exclusions>
         </dependency>
         <dependency>
@@ -164,10 +143,6 @@
                 <exclusion>
                     <groupId>org.slf4j</groupId>
                     <artifactId>slf4j-api</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>com.google.guava</groupId>
-                    <artifactId>guava</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
@@ -185,6 +160,7 @@
             <artifactId>junit</artifactId>
             <version>${dep.junit.version}</version>
             <optional>true</optional>
+            <scope>provided</scope>
         </dependency>
         <!-- test deps -->
         <dependency>
@@ -194,26 +170,6 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
-
-    <reporting>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-checkstyle-plugin</artifactId>
-                <version>2.9.1</version>
-                <configuration>
-                    <configLocation>${dep.plugin.checkstyle.configLocation}</configLocation>
-                    <includeTestSourceDirectory>true</includeTestSourceDirectory>
-                    <consoleOutput>false</consoleOutput>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.rat</groupId>
-                <artifactId>apache-rat-plugin</artifactId>
-                <version>0.10</version>
-            </plugin>
-        </plugins>
-    </reporting>
 
     <scm>
         <connection>scm:git:git@github.com:addthis/bark.git</connection>
