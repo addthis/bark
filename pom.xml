@@ -171,6 +171,17 @@
         </dependency>
     </dependencies>
 
+    <reporting>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.rat</groupId>
+                <artifactId>apache-rat-plugin</artifactId>
+                <version>${dep.plugin.rat.version}</version>
+            </plugin>
+        </plugins>
+    </reporting>
+
+
     <scm>
         <connection>scm:git:git@github.com:addthis/bark.git</connection>
         <developerConnection>scm:git:git@github.com:addthis/bark.git</developerConnection>
