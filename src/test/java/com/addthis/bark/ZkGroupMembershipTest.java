@@ -52,7 +52,7 @@ public class ZkGroupMembershipTest {
         InstanceSpec spec = new InstanceSpec(null, -1, -1, -1, true, -1, 2000, 10);
         System.setProperty("zk.servers", "localhost:" + spec.getPort());
         System.setProperty("zookeeper.serverCnxnFactory", "org.apache.zookeeper.server.NettyServerCnxnFactory");
-        TestingServer myKeeper = new TestingServer(spec);
+        TestingServer myKeeper = new TestingServer(spec, true);
         myZkClient = CuratorFrameworkFactory.newClient("localhost:" + spec.getPort(), new RetryOneTime(1000));
         myZkClient.start();
     }

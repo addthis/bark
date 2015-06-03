@@ -15,15 +15,14 @@ package com.addthis.bark;
 
 import javax.annotation.Nonnull;
 
-import com.addthis.basis.util.Parameter;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.curator.retry.ExponentialBackoffRetry;
 
 @SuppressWarnings("unused")
 public class ZkUtil {
-    private static final String zkHosts = Parameter.value("zk.servers", "127.0.0.1:2181");
-    private static final String zkChroot = Parameter.value("zk.chroot", "");
+    private static final String zkHosts = System.getProperty("zk.servers", "127.0.0.1:2181");
+    private static final String zkChroot = System.getProperty("zk.chroot", "");
     private static final int zkSessionTimeout = Integer.parseInt(System.getProperty("zk.sessionTimeout", "600000"));
     private static final int zkConnectionTimeout = Integer.parseInt(System.getProperty("zk.connectionTimeout", "180000"));
     private static final int baseZkRetryTimeMs = Integer.parseInt(System.getProperty("zk.zkRetryTimeMs", "1000"));
